@@ -14,15 +14,10 @@ from pydantic import BaseModel
 
 from rapidfuzz import fuzz
 from dotenv import load_dotenv
-import openai
 
 load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is not set in environment variables.")
-
-openai.api_key = OPENAI_API_KEY
 
 app = FastAPI(title="Bajaj Health Datathon Bill Extraction API")
 
@@ -151,34 +146,41 @@ Rules (very important):
 - Otherwise, use page_type "Bill Detail".
 """
     try:
-        # Use ChatCompletion.create style compatible with more openai versions
-        resp = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # or "gpt-4o" if you have access
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-                {
-                    "role": "user",
-                    "content": f"Image (base64 PNG): {img_b64}",
-                },
-            ],
-            temperature=0.1,
-            max_tokens=1000,
+        groq_url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        full_text = (
+            prompt
+            + "\n\nBelow is the bill page as base64 PNG. First imagine you can see it, "
+            + "then extract line items and return STRICT JSON only.\n\n"
+            + f"[IMAGE_BASE64_START]\n{img_b64}\n[IMAGE_BASE64_END]"
         )
+
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [
+                {"role": "user", "content": full_text},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 1000,
+        }
+
+        resp = requests.post(groq_url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
 
-    # token accounting (may not always be present)
-    if hasattr(resp, "usage") and resp.usage:
-        usage = resp.usage
-        token_usage["total_tokens"] += usage.total_tokens
-        token_usage["input_tokens"] += usage.prompt_tokens
-        token_usage["output_tokens"] += usage.completion_tokens
+    usage = data.get("usage") or {}
+    token_usage["total_tokens"] += usage.get("total_tokens", 0)
+    token_usage["input_tokens"] += usage.get("prompt_tokens", 0)
+    token_usage["output_tokens"] += usage.get("completion_tokens", 0)
 
-    # NOTE: ChatCompletion.create returns dict-style objects
-    content = resp.choices[0]["message"]["content"].strip()
+    content = data["choices"][0]["message"]["content"].strip()
+
 
 
     # try to isolate JSON
