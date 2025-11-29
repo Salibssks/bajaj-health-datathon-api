@@ -109,38 +109,31 @@ def call_llm_for_page(image: Image.Image, page_no: int) -> Dict[str, Any]:
 
     img_b64 = image_to_base64(image)
 
-    prompt = f"""
-You are extracting structured BILL LINE ITEMS from a medical / pharmacy bill page.
+    prompt = """
+You see a medical or pharmacy bill.
 
-Return STRICT JSON with this structure ONLY:
+Return ONLY JSON:
 
-{{
+{
   "page_type": "Bill Detail" | "Final Bill" | "Pharmacy",
   "bill_items": [
-    {{
+    {
       "item_name": "string",
       "item_amount": number,
       "item_rate": number,
       "item_quantity": number
-    }}
+    }
   ]
-}}
+}
 
-Rules (very important):
-- A LINE ITEM must have (a) description text AND (b) a quantity AND (c) a numeric amount in the row.
-- Use EXACT text for item_name from the row (no paraphrasing).
-- item_amount = final net amount for that row (after discounts/taxes if shown per-line).
-- item_rate = unit rate/price in that row if visible, else 0.
-- item_quantity = quantity / QTY / NO. / PCS / etc. in that row if visible, else 1.
-- IGNORE rows that are section totals or bill summaries, such as:
-  "Sub Total", "Total", "Total of ...", "Grand Total", "Bill Amount",
-  "Net Amount", "Net Payable", "Balance Amt", "Service Amount",
-  "Total Payable Amount", "Discount", "Deposit", "Paid Amount".
-- For pages that are clearly only summary / totals and no per-row Qty,
-  set "bill_items": [] and choose page_type "Final Bill".
-- For pages that are mainly pharmacy / drug lists, use page_type "Pharmacy".
-- Otherwise, use page_type "Bill Detail".
+Rules:
+- Include a row only if it has description text, quantity and a numeric amount.
+- item_amount = final net amount for that row.
+- item_rate = unit rate if visible else 0.
+- item_quantity = quantity / QTY / NO / PCS etc., else 1.
+- Ignore totals or summary rows (sub total, total, grand total, bill amount, net amount, net payable, discount, deposit, paid amount, etc.).
 """
+
 
     try:
         groq_url = "https://api.groq.com/openai/v1/chat/completions"
@@ -157,7 +150,7 @@ Rules (very important):
                 {"role": "user", "content": full_text},
             ],
             "temperature": 0.1,
-            "max_tokens": 600,
+            "max_tokens": 300,
             "stream": False,
         }
 
