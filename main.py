@@ -18,14 +18,12 @@ from dotenv import load_dotenv
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-
 app = FastAPI(title="Bajaj Health Datathon Bill Extraction API")
 
 # ----------------- Request / response models ----------------- #
 
 class ExtractRequest(BaseModel):
     document: str  # public URL of PDF / image
-
 
 class LineItem:
     """
@@ -62,7 +60,6 @@ def download_bytes(url: str) -> bytes:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to download document: {e}")
 
-
 def document_to_images(url: str) -> List[Image.Image]:
     """
     Handle both PDFs and direct image URLs.
@@ -98,10 +95,9 @@ def image_to_base64(image: Image.Image) -> str:
     image.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-
 def call_llm_for_page(image: Image.Image, page_no: int) -> Dict[str, Any]:
     """
-    Call GPT‑4o (or similar) with vision to get:
+    Call Groq (OpenAI-compatible) to get:
     {
       "page_type": "Bill Detail" | "Final Bill" | "Pharmacy",
       "bill_items": [
@@ -145,6 +141,7 @@ Rules (very important):
 - For pages that are mainly pharmacy / drug lists, use page_type "Pharmacy".
 - Otherwise, use page_type "Bill Detail".
 """
+
     try:
         groq_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -152,12 +149,7 @@ Rules (very important):
             "Content-Type": "application/json",
         }
 
-        full_text = (
-            prompt
-            + "\n\nBelow is the bill page as base64 PNG. First imagine you can see it, "
-            + "then extract line items and return STRICT JSON only.\n\n"
-            + f"[IMAGE_BASE64_START]\n{img_b64}\n[IMAGE_BASE64_END]"
-        )
+        full_text = prompt
 
         payload = {
             "model": "llama-3.1-8b-instant",
@@ -165,7 +157,8 @@ Rules (very important):
                 {"role": "user", "content": full_text},
             ],
             "temperature": 0.1,
-            "max_tokens": 1000,
+            "max_tokens": 600,
+            "stream": False,
         }
 
         resp = requests.post(groq_url, headers=headers, json=payload, timeout=60)
@@ -180,8 +173,6 @@ Rules (very important):
     token_usage["output_tokens"] += usage.get("completion_tokens", 0)
 
     content = data["choices"][0]["message"]["content"].strip()
-
-
 
     # try to isolate JSON
     start = content.find("{")
@@ -212,7 +203,6 @@ def is_summary_or_total_row(name: str) -> bool:
         "refund amount",
     ]
     return any(k in text for k in keywords)
-
 
 def deduplicate_items(items: List[LineItem]) -> List[LineItem]:
     """
@@ -294,9 +284,6 @@ def extract_bill_data(req: ExtractRequest):
     deduped = deduplicate_items(all_items)
     total_item_count = len(deduped)
 
-    # NOTE: Evaluator will compute totals from bill_items;
-    # we don't need to return totals explicitly.
-
     return JSONResponse(
         content={
             "is_success": True,
@@ -307,7 +294,6 @@ def extract_bill_data(req: ExtractRequest):
             },
         }
     )
-
 
 @app.get("/")
 def root():
