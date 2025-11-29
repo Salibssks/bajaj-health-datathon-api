@@ -5,7 +5,7 @@
 - Convert input URL to bytes; treat as PDF (via PyMuPDF) or image (via Pillow).
 - For each page:
       Render to high‑resolution PNG.
-      Send base64 image + strict JSON schema prompt to OpenAI vision model.
+      Send base64 image + strict JSON schema prompt to GROQ vision model.
 -LLM returns page_type and bill_items.
 
            -- Backend: -- 
